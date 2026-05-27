@@ -1,0 +1,101 @@
+name: GCP Deploy
+
+on:
+  push:
+    branches: 'main'
+  workflow_dispatch:
+
+concurrency:
+  group: GCP-arbit-ai-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build And Deploy
+    runs-on: ubuntu-latest
+
+    env:
+      REMOTE_APP_DIR: /home/lalalove0310/arbit-ai
+      DOCKER_NETWORK: arbit-net
+      DOCKER_IMAGE: arbit-ai:latest
+      DOCKER_CONTAINER: arbit-ai
+      APP_PORT: 8000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set Up SSH
+        env:
+          GCP_SSH_KEY: ${{ secrets.GCP_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$GCP_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p "${{ vars.GCP_PORT || 22 }}" "${{ vars.GCP_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Ensure Remote Directory
+        run: |
+          ssh -p "${{ vars.GCP_PORT || 22 }}" "${{ vars.GCP_USERNAME }}@${{ vars.GCP_HOST }}" "
+            mkdir -p '${REMOTE_APP_DIR}'
+          "
+
+      - name: Sync Source To Server
+        run: |
+          rsync -avz --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude '__pycache__' \
+            --exclude '.env' \
+            --exclude '.venv' \
+            --exclude 'venv' \
+            -e "ssh -p ${{ vars.GCP_PORT || 22 }}" \
+            ./ "${{ vars.GCP_USERNAME }}@${{ vars.GCP_HOST }}:${REMOTE_APP_DIR}/"
+
+      - name: Write Environment File
+        env:
+          ARBIT_AI_ENV: ${{ secrets.ARBIT_AI_ENV }}
+        run: |
+          if [ -n "$ARBIT_AI_ENV" ]; then
+            printf '%s\n' "$ARBIT_AI_ENV" | ssh -p "${{ vars.GCP_PORT || 22 }}" "${{ vars.GCP_USERNAME }}@${{ vars.GCP_HOST }}" "cat > '${REMOTE_APP_DIR}/.env'"
+          fi
+
+      - name: Build And Restart Container
+        run: |
+          ssh -p "${{ vars.GCP_PORT || 22 }}" "${{ vars.GCP_USERNAME }}@${{ vars.GCP_HOST }}" "
+            set -e
+            cd '${REMOTE_APP_DIR}'
+            docker network inspect '${DOCKER_NETWORK}' >/dev/null 2>&1 || docker network create '${DOCKER_NETWORK}'
+            docker build -t '${DOCKER_IMAGE}' .
+            docker rm -f '${DOCKER_CONTAINER}' >/dev/null 2>&1 || true
+
+            ENV_FILE_ARG=''
+            if [ -f .env ]; then
+              ENV_FILE_ARG='--env-file .env'
+            fi
+
+            docker run -d \
+              --name '${DOCKER_CONTAINER}' \
+              --network '${DOCKER_NETWORK}' \
+              --restart unless-stopped \
+              \$ENV_FILE_ARG \
+              '${DOCKER_IMAGE}'
+          "
+
+      - name: Health Check
+        run: |
+          ssh -p "${{ vars.GCP_PORT || 22 }}" "${{ vars.GCP_USERNAME }}@${{ vars.GCP_HOST }}" "
+            set -e
+            for i in \$(seq 1 20); do
+              if docker exec '${DOCKER_CONTAINER}' python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:${APP_PORT}/health', timeout=2).read()\"; then
+                docker logs --tail=100 '${DOCKER_CONTAINER}'
+                exit 0
+              fi
+              sleep 2
+            done
+            docker logs --tail=200 '${DOCKER_CONTAINER}'
+            exit 1
+          "

@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: 'main'
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check Python Syntax
+        run: python -m py_compile app.py 0_data_processing.py 1_llm_mood_extractor.py 2_recommendation.py
+
+      - name: Build Docker Image
+        run: docker build -t arbit-ai-ci .
