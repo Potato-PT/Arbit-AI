@@ -1,0 +1,15 @@
+.gradle/
+build/
+out/
+*.class
+
+.env
+*.log
+
+.idea/
+*.iml
+.vscode/
+
+src/main/resources/application-local.yml
+src/test/*
+node_modules/*
