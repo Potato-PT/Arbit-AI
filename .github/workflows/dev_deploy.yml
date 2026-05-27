@@ -1,4 +1,4 @@
-name: GCP Deploy
+name: GCP AI Deploy
 
 on:
   push:
@@ -22,20 +22,99 @@ jobs:
       DOCKER_NETWORK: arbit-net
       DOCKER_IMAGE: arbit-ai:latest
       DOCKER_CONTAINER: arbit-ai
+      DOCKER_NETWORK_ALIAS: arbit-ai
       APP_PORT: 8000
+      HOST_PORT: 8001
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check Python Syntax
+        run: python -m py_compile app.py 0_data_processing.py 1_llm_mood_extractor.py 2_recommendation.py
+
+      - name: Build Docker Image
+        run: docker build -t arbit-ai-ci .
+
+      - name: Prepare Deploy Bundle
+        env:
+          ARBIT_AI_ENV: ${{ secrets.ARBIT_AI_ENV }}
+        run: |
+          mkdir -p deploy
+          rsync -av --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude '__pycache__' \
+            --exclude '.env' \
+            --exclude '.venv' \
+            --exclude 'venv' \
+            --exclude 'deploy' \
+            ./ deploy/
+
+          if [ -n "$ARBIT_AI_ENV" ]; then
+            printf '%s\n' "$ARBIT_AI_ENV" > deploy/.env
+          fi
+
       - name: Set Up SSH
         env:
           GCP_SSH_KEY: ${{ secrets.GCP_SSH_KEY }}
         run: |
+          set -e
+
+          echo "::group::SSH input check"
+          if [ -z "${{ vars.GCP_HOST }}" ]; then
+            echo "GCP_HOST repository variable is empty"
+            exit 1
+          fi
+          if [ -z "${{ vars.GCP_USERNAME }}" ]; then
+            echo "GCP_USERNAME repository variable is empty"
+            exit 1
+          fi
+          if [ -z "$GCP_SSH_KEY" ]; then
+            echo "GCP_SSH_KEY secret is empty"
+            exit 1
+          fi
+          echo "GCP_HOST=${{ vars.GCP_HOST }}"
+          echo "GCP_PORT=${{ vars.GCP_PORT || 22 }}"
+          echo "GCP_USERNAME=${{ vars.GCP_USERNAME }}"
+          echo "GCP_SSH_KEY is present"
+          echo "::endgroup::"
+
+          echo "::group::Create SSH key file"
           mkdir -p ~/.ssh
           printf '%s\n' "$GCP_SSH_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -p "${{ vars.GCP_PORT || 22 }}" "${{ vars.GCP_HOST }}" >> ~/.ssh/known_hosts
+          ls -ld ~/.ssh
+          ls -l ~/.ssh/id_rsa
+          ssh-keygen -y -f ~/.ssh/id_rsa >/dev/null
+          echo "SSH private key format is valid"
+          echo "::endgroup::"
+
+          echo "::group::Add host key"
+          ssh-keyscan -v -T 15 -p "${{ vars.GCP_PORT || 22 }}" "${{ vars.GCP_HOST }}" 2>&1 | tee /tmp/ssh-keyscan.log
+          ssh-keyscan -T 15 -p "${{ vars.GCP_PORT || 22 }}" "${{ vars.GCP_HOST }}" >> ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts || { echo "known_hosts is empty after ssh-keyscan"; exit 1; }
+          echo "known_hosts line count: $(wc -l < ~/.ssh/known_hosts)"
+          echo "::endgroup::"
+
+      - name: Test SSH Connection
+        run: |
+          set -e
+          ssh -vvv \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -p "${{ vars.GCP_PORT || 22 }}" \
+            "${{ vars.GCP_USERNAME }}@${{ vars.GCP_HOST }}" \
+            "echo 'SSH connection succeeded'; whoami; hostname; pwd"
 
       - name: Ensure Remote Directory
         run: |
@@ -43,33 +122,22 @@ jobs:
             mkdir -p '${REMOTE_APP_DIR}'
           "
 
-      - name: Sync Source To Server
+      - name: Sync Deploy Bundle To Server
         run: |
-          rsync -avz --delete \
-            --exclude '.git' \
-            --exclude '.github' \
-            --exclude '__pycache__' \
-            --exclude '.env' \
-            --exclude '.venv' \
-            --exclude 'venv' \
-            -e "ssh -p ${{ vars.GCP_PORT || 22 }}" \
-            ./ "${{ vars.GCP_USERNAME }}@${{ vars.GCP_HOST }}:${REMOTE_APP_DIR}/"
+          rsync -avz --delete -e "ssh -p ${{ vars.GCP_PORT || 22 }}" deploy/ "${{ vars.GCP_USERNAME }}@${{ vars.GCP_HOST }}:${REMOTE_APP_DIR}/"
 
-      - name: Write Environment File
-        env:
-          ARBIT_AI_ENV: ${{ secrets.ARBIT_AI_ENV }}
-        run: |
-          if [ -n "$ARBIT_AI_ENV" ]; then
-            printf '%s\n' "$ARBIT_AI_ENV" | ssh -p "${{ vars.GCP_PORT || 22 }}" "${{ vars.GCP_USERNAME }}@${{ vars.GCP_HOST }}" "cat > '${REMOTE_APP_DIR}/.env'"
-          fi
-
-      - name: Build And Restart Container
+      - name: Build And Restart
         run: |
           ssh -p "${{ vars.GCP_PORT || 22 }}" "${{ vars.GCP_USERNAME }}@${{ vars.GCP_HOST }}" "
             set -e
+            mkdir -p '${REMOTE_APP_DIR}'
             cd '${REMOTE_APP_DIR}'
+            ls -la
+            test -f Dockerfile || { echo 'Dockerfile not found after rsync'; exit 1; }
+
             docker network inspect '${DOCKER_NETWORK}' >/dev/null 2>&1 || docker network create '${DOCKER_NETWORK}'
             docker build -t '${DOCKER_IMAGE}' .
+
             docker rm -f '${DOCKER_CONTAINER}' >/dev/null 2>&1 || true
 
             ENV_FILE_ARG=''
@@ -80,22 +148,28 @@ jobs:
             docker run -d \
               --name '${DOCKER_CONTAINER}' \
               --network '${DOCKER_NETWORK}' \
+              --network-alias '${DOCKER_NETWORK_ALIAS}' \
               --restart unless-stopped \
+              -p 127.0.0.1:${HOST_PORT}:${APP_PORT} \
               \$ENV_FILE_ARG \
               '${DOCKER_IMAGE}'
+
+            docker ps --filter name='${DOCKER_CONTAINER}'
           "
 
       - name: Health Check
         run: |
           ssh -p "${{ vars.GCP_PORT || 22 }}" "${{ vars.GCP_USERNAME }}@${{ vars.GCP_HOST }}" "
             set -e
-            for i in \$(seq 1 20); do
+            for i in \$(seq 1 30); do
               if docker exec '${DOCKER_CONTAINER}' python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:${APP_PORT}/health', timeout=2).read()\"; then
                 docker logs --tail=100 '${DOCKER_CONTAINER}'
                 exit 0
               fi
               sleep 2
             done
+
+            docker ps -a --filter name='${DOCKER_CONTAINER}'
             docker logs --tail=200 '${DOCKER_CONTAINER}'
             exit 1
           "
