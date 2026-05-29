@@ -78,13 +78,13 @@ def select_seed_events(df):
 
         if 4 <= len(nums) <= 5:
             selected = sample_df.iloc[[n - 1 for n in nums]].reset_index(drop=True)
-            print(f"\n✅ 선택된 행사 {len(selected)}건:")
+            print(f"\n[OK] 선택된 행사 {len(selected)}건:")
             for _, row in selected.iterrows():
                 print(f"   - [{row['genre']}] {row['title'][:40]}")
                 print(f"     무드: {', '.join(row['mood_tags'])} | 연령: {row['age_label']}")
             return selected
 
-        print(f"\n  ⚠ 4~5개를 선택해야 합니다. (현재 {len(nums)}개 선택)")
+        print(f"\n  [WARN] 4~5개를 선택해야 합니다. (현재 {len(nums)}개 선택)")
 
 
 # ──────────────────────────────────────────────
@@ -113,7 +113,7 @@ def extract_preference_profile(selected_df):
     # 허용 연령 레이블
     allowed_ages = set(selected_df["age_label"].tolist())
 
-    print(f"\n📊 자동 추출된 취향 프로필")
+    print(f"\n[PROFILE] 자동 추출된 취향 프로필")
     print(f"   장르: {', '.join(f'{g}({v:.0%})' for g, v in genre_weights.items())}")
     print(f"   무드: {', '.join(f'{m}({v:.0%})' for m, v in mood_weights.items())}")
     print(f"   연령: {', '.join(allowed_ages)}")
@@ -132,7 +132,7 @@ def score_all(df, genre_weights, mood_weights):
     # 장르가 1~2개로 집중  → 장르 점수가 의미 있으므로 균형 유지
     genre_diversity = len(genre_weights)
     weights = WEIGHTS_DISPERSED if genre_diversity >= 3 else WEIGHTS_FOCUSED
-    print(f"\n⚙ 적용된 가중치 — "
+    print(f"\n[WEIGHTS] 적용된 가중치 - "
           f"장르: {weights['genre']:.0%} / "
           f"무드: {weights['mood']:.0%} / "
           f"긴급도: {weights['urgency']:.0%} "
@@ -188,11 +188,11 @@ def score_all(df, genre_weights, mood_weights):
 # 메인
 # ──────────────────────────────────────────────
 def main():
-    print("="*60 + "\n🎯 스마트 문화행사 추천 시스템\n" + "="*60)
+    print("="*60 + "\n스마트 문화행사 추천 시스템\n" + "="*60)
     try:
         df = load_data()
     except FileNotFoundError:
-        print("\n❌ 에러: 'events_with_mood.csv' 파일이 없습니다. 1_llm_mood_extractor.py를 먼저 실행하세요.")
+        print("\n[ERROR] 'events_with_mood.csv' 파일이 없습니다. 1_llm_mood_extractor.py를 먼저 실행하세요.")
         return
 
     # 1. 랜덤 10개에서 4~5개 선택
@@ -208,7 +208,7 @@ def main():
         ~df["event_id"].isin(selected_ids)
     ].reset_index(drop=True)
 
-    print(f"\n→ 추천 후보: {len(df_candidates)}건")
+    print(f"\n추천 후보: {len(df_candidates)}건")
 
     # 4. 스코어링
     scored = score_all(df_candidates, genre_weights, mood_weights)
@@ -222,10 +222,10 @@ def main():
         badge = f"[{row['status']}]"
         src   = "[LLM]" if row.get("mood_source") == "llm" else ""
         print(f"\n{i+1}. {badge} {row['title'][:40]}")
-        print(f"   ▫ 장르/지역 : {row['genre']} | {row['district']} | {'무료' if row['is_free'] else '유료'}")
-        print(f"   ▫ 일정/연령 : ~{row['end_date']} (D-{row['days_left']}) | {row['age_label']}")
-        print(f"   ▫ 태그 {src}  : {', '.join(row['mood_tags'])}")
-        print(f"   ▫ 매칭률    : {row['match_pct']:.1f}% (장르 {row['genre_score']}, 무드 {row['mood_score']}, 긴급도 {row['urgency']})")
+        print(f"   - 장르/지역 : {row['genre']} | {row['district']} | {'무료' if row['is_free'] else '유료'}")
+        print(f"   - 일정/연령 : ~{row['end_date']} (D-{row['days_left']}) | {row['age_label']}")
+        print(f"   - 태그 {src}  : {', '.join(row['mood_tags'])}")
+        print(f"   - 매칭률    : {row['match_pct']:.1f}% (장르 {row['genre_score']}, 무드 {row['mood_score']}, 긴급도 {row['urgency']})")
 
 if __name__ == "__main__":
     main()

@@ -9,10 +9,11 @@ import csv
 import logging
 import sys
 from datetime import datetime
-from pathlib import Path
-
+import uuid
+import pandas as pd
 import pymysql
-import pymysql.cursors
+import datetime
+import os
 
 # ──────────────────────────────────────────────
 # DB 접속 정보 (환경에 맞게 수정)
@@ -165,10 +166,9 @@ def insert_age_restriction(cursor, hex_event_id: str, age_label: str) -> None:
 # 메인
 # ──────────────────────────────────────────────
 def main() -> None:
-    if not CSV_PATH.exists():
-        log.error("CSV 파일을 찾을 수 없습니다: %s", CSV_PATH.resolve())
+    if not os.path.exists(CSV_PATH):
+        log.error("CSV 파일을 찾을 수 없습니다: %s", CSV_PATH)
         sys.exit(1)
-
     stats = {
         "total":              0,
         "skipped_no_match":   0,

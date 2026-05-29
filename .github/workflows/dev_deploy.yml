@@ -24,7 +24,7 @@ jobs:
       DOCKER_CONTAINER: arbit-ai
       DOCKER_NETWORK_ALIAS: arbit-ai
       APP_PORT: 8000
-      HOST_PORT: 8001
+      HOST_PORT: 8000
 
     steps:
       - name: Checkout
