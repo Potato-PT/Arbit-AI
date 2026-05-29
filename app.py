@@ -1,17 +1,26 @@
 from __future__ import annotations
 
 import importlib.util
+import logging
+import time
+import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 
 BASE_DIR = Path(__file__).resolve().parent
 RECOMMENDATION_PATH = BASE_DIR / "2_recommendation.py"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger("arbit.recommendations")
 
 
 def _load_recommendation_module():
@@ -32,6 +41,50 @@ app = FastAPI(
     description="서울 문화행사 데이터를 불러와 사용자가 선택한 관심 행사 기반으로 맞춤 추천을 제공하는 API입니다.",
     version="1.0.0",
 )
+
+
+@app.middleware("http")
+async def log_recommendations_http(request: Request, call_next):
+    if request.url.path != "/recommendations":
+        return await call_next(request)
+
+    request_id = uuid.uuid4().hex[:12]
+    request.state.request_id = request_id
+    started_at = time.perf_counter()
+    client_host = request.client.host if request.client else "-"
+
+    logger.info(
+        "request.start request_id=%s method=%s path=%s client=%s",
+        request_id,
+        request.method,
+        request.url.path,
+        client_host,
+    )
+
+    try:
+        response = await call_next(request)
+    except Exception:
+        duration_ms = (time.perf_counter() - started_at) * 1000
+        logger.exception(
+            "request.error request_id=%s method=%s path=%s duration_ms=%.2f",
+            request_id,
+            request.method,
+            request.url.path,
+            duration_ms,
+        )
+        raise
+
+    duration_ms = (time.perf_counter() - started_at) * 1000
+    response.headers["X-Request-ID"] = request_id
+    logger.info(
+        "request.end request_id=%s method=%s path=%s status_code=%s duration_ms=%.2f",
+        request_id,
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
+    return response
 
 
 class RecommendationRequest(BaseModel):
@@ -173,30 +226,76 @@ def seed_events(
     summary="맞춤 행사 추천",
     description="사용자가 선택한 관심 행사 4~5개를 기반으로 취향 프로필을 만들고 추천 행사를 반환합니다.",
 )
-def recommend(payload: RecommendationRequest) -> dict[str, Any]:
+def recommend(payload: RecommendationRequest, request: Request) -> dict[str, Any]:
+    request_id = getattr(request.state, "request_id", "-")
+    logger.info(
+        "recommendations.payload request_id=%s event_ids=%s limit=%s",
+        request_id,
+        payload.event_ids,
+        payload.limit,
+    )
+
     df = get_events_df()
+    logger.info(
+        "recommendations.data_loaded request_id=%s events_count=%s",
+        request_id,
+        len(df),
+    )
+
     event_ids = list(dict.fromkeys(payload.event_ids))
 
     if len(event_ids) != len(payload.event_ids):
+        logger.warning(
+            "recommendations.validation_failed request_id=%s reason=duplicate_event_ids event_ids=%s",
+            request_id,
+            payload.event_ids,
+        )
         raise HTTPException(status_code=400, detail="event_ids에 중복 값이 있습니다.")
 
     selected_df = df[df["event_id"].isin(event_ids)].copy()
     missing_ids = sorted(set(event_ids) - set(selected_df["event_id"].tolist()))
     if missing_ids:
+        logger.warning(
+            "recommendations.validation_failed request_id=%s reason=missing_event_ids missing_event_ids=%s",
+            request_id,
+            missing_ids,
+        )
         raise HTTPException(status_code=404, detail={"missing_event_ids": missing_ids})
 
     selected_df["_request_order"] = selected_df["event_id"].apply(event_ids.index)
     selected_df = selected_df.sort_values("_request_order").drop(columns=["_request_order"]).reset_index(drop=True)
+    logger.info(
+        "recommendations.selected request_id=%s selected_count=%s selected_event_ids=%s",
+        request_id,
+        len(selected_df),
+        selected_df["event_id"].tolist(),
+    )
 
     genre_weights, mood_weights, allowed_ages = recommendation.extract_preference_profile(selected_df)
+    logger.info(
+        "recommendations.profile request_id=%s genre_weights=%s mood_weights=%s allowed_ages=%s",
+        request_id,
+        genre_weights,
+        mood_weights,
+        sorted(allowed_ages),
+    )
 
     selected_ids = set(selected_df["event_id"].tolist())
     candidates = df[
         df["age_label"].isin(allowed_ages)
         & ~df["event_id"].isin(selected_ids)
     ].reset_index(drop=True)
+    logger.info(
+        "recommendations.candidates request_id=%s candidates_count=%s",
+        request_id,
+        len(candidates),
+    )
 
     if candidates.empty:
+        logger.info(
+            "recommendations.response request_id=%s candidates_count=0 recommendations_count=0",
+            request_id,
+        )
         return {
             "selected_events": [_row_to_event(row) for _, row in selected_df.iterrows()],
             "preference_profile": {
@@ -210,8 +309,14 @@ def recommend(payload: RecommendationRequest) -> dict[str, Any]:
 
     scored = recommendation.score_all(candidates, genre_weights, mood_weights)
     scored = scored.head(payload.limit)
+    logger.info(
+        "recommendations.scored request_id=%s recommendations_count=%s top_event_ids=%s",
+        request_id,
+        len(scored),
+        scored["event_id"].tolist(),
+    )
 
-    return {
+    response = {
         "selected_events": [_row_to_event(row) for _, row in selected_df.iterrows()],
         "preference_profile": {
             "genre_weights": genre_weights,
@@ -221,3 +326,10 @@ def recommend(payload: RecommendationRequest) -> dict[str, Any]:
         "candidates_count": len(candidates),
         "recommendations": [_row_to_event(row, include_scores=True) for _, row in scored.iterrows()],
     }
+    logger.info(
+        "recommendations.response request_id=%s candidates_count=%s recommendations_count=%s",
+        request_id,
+        response["candidates_count"],
+        len(response["recommendations"]),
+    )
+    return response

@@ -245,7 +245,7 @@ def main() -> None:
     log.info("  성공(커밋):        %d", stats["inserted"])
     log.info("  SKIP(title 불일치): %d", stats["skipped_no_match"])
     log.info("  SKIP(에러/롤백):   %d", stats["skipped_error"])
-    log.info("  로그 파일:         %s", LOG_PATH.resolve())
+    log.info("  로그 파일:         %s", os.path.abspath(LOG_PATH))
     log.info("=" * 50)
 
 
