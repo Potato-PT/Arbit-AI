@@ -3,5 +3,6 @@ uvicorn[standard]
 pandas
 python-dotenv
 google-genai
+google-cloud-storage
 tqdm
 pymysql
