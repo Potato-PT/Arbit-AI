@@ -12,7 +12,6 @@ from datetime import datetime
 import uuid
 import pandas as pd
 import pymysql
-import datetime
 import os
 
 # ──────────────────────────────────────────────
