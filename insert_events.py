@@ -21,6 +21,7 @@ import pandas as pd
 import pymysql
 
 from config import get_db_config
+from db_schema import ensure_local_database_schema
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -193,6 +194,8 @@ def insert_event(cursor, row: pd.Series, category_id: int, now: datetime) -> Non
 
 
 def main() -> None:
+    ensure_local_database_schema()
+
     df = pd.read_csv(CSV_PATH)
     now = datetime.now()
     stats = {"total": 0, "success": 0, "skipped": 0}

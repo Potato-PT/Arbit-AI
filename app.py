@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 
 BASE_DIR = Path(__file__).resolve().parent
-RECOMMENDATION_PATH = BASE_DIR / "2_recommendation.py"
+RECOMMENDATION_PATH = BASE_DIR / "db_recommendation.py"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -88,12 +88,17 @@ async def log_recommendations_http(request: Request, call_next):
 
 
 class RecommendationRequest(BaseModel):
-    event_ids: list[int] = Field(
+    event_ids: list[uuid.UUID] = Field(
         ...,
         min_length=4,
         max_length=5,
         description="취향 프로필을 만들기 위해 사용자가 관심 행사로 선택한 event_id 4~5개입니다.",
-        examples=[[0, 12, 34, 56]],
+        examples=[[
+            "550e8400-e29b-41d4-a716-446655440000",
+            "550e8400-e29b-41d4-a716-446655440001",
+            "550e8400-e29b-41d4-a716-446655440002",
+            "550e8400-e29b-41d4-a716-446655440003",
+        ]],
     )
     limit: int = Field(10, ge=1, le=50, description="추천 결과로 반환할 최대 행사 개수입니다.")
 
@@ -108,7 +113,7 @@ def _clean_value(value: Any) -> Any:
 
 def _row_to_event(row: pd.Series, include_scores: bool = False) -> dict[str, Any]:
     event = {
-        "event_id": int(row["event_id"]),
+        "event_id": str(row["event_id"]),
         "title": _clean_value(row["title"]),
         "genre": _clean_value(row["genre"]),
         "district": _clean_value(row["district"]),
@@ -157,7 +162,7 @@ def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "events_count": len(df),
-        "data_file": recommendation.INPUT_CSV,
+        "data_source": recommendation.DATA_SOURCE,
     }
 
 
@@ -242,7 +247,7 @@ def recommend(payload: RecommendationRequest, request: Request) -> dict[str, Any
         len(df),
     )
 
-    event_ids = list(dict.fromkeys(payload.event_ids))
+    event_ids = [str(event_id) for event_id in dict.fromkeys(payload.event_ids)]
 
     if len(event_ids) != len(payload.event_ids):
         logger.warning(

@@ -1,8 +1,10 @@
 name: GCP AI Deploy
 
 on:
-  push:
-    branches: 'main'
+  workflow_run:
+    workflows: ["CI"]
+    branches: ['main']
+    types: [completed]
   workflow_dispatch:
 
 concurrency:
@@ -16,6 +18,7 @@ jobs:
   prepare-deploy:
     name: Prepare Deploy Bundle
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
 
     env:
       REMOTE_APP_DIR: /home/lalalove0310/arbit-ai
@@ -32,7 +35,13 @@ jobs:
 
       - name: Prepare Deploy Bundle
         env:
-          ARBIT_AI_ENV: ${{ secrets.ARBIT_AI_ENV }}
+          ARBIT_DB_PROFILE: gcp
+          GCP_DB_URL: ${{ vars.GCP_DB_URL }}
+          GCP_DB_USERNAME: ${{ vars.GCP_DB_USERNAME }}
+          GCP_DB_PASSWORD: ${{ secrets.GCP_DB_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GCS_BUCKET_NAME: ${{ vars.GCS_BUCKET_NAME || 'deepflow-image-storage' }}
+          GCS_PUBLIC_BASE_URL: ${{ vars.GCS_PUBLIC_BASE_URL || 'https://storage.googleapis.com/deepflow-image-storage' }}
         run: |
           mkdir -p deploy
           rsync -av --delete \
@@ -45,9 +54,15 @@ jobs:
             --exclude 'deploy' \
             ./ deploy/
 
-          if [ -n "$ARBIT_AI_ENV" ]; then
-            printf '%s\n' "$ARBIT_AI_ENV" > deploy/.env
-          fi
+          {
+            echo "ARBIT_DB_PROFILE=${ARBIT_DB_PROFILE}"
+            echo "GCP_DB_URL=${GCP_DB_URL}"
+            echo "GCP_DB_USERNAME=${GCP_DB_USERNAME}"
+            echo "GCP_DB_PASSWORD=${GCP_DB_PASSWORD}"
+            echo "GEMINI_API_KEY=${GEMINI_API_KEY}"
+            echo "GCS_BUCKET_NAME=${GCS_BUCKET_NAME}"
+            echo "GCS_PUBLIC_BASE_URL=${GCS_PUBLIC_BASE_URL}"
+          } > deploy/.env
 
       - name: Set Up SSH
         env:

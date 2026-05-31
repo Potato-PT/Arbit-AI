@@ -23,6 +23,7 @@ from pathlib import Path
 import pymysql
 
 from config import get_db_config
+from db_schema import ensure_local_database_schema
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -192,6 +193,8 @@ def upsert_age_restriction(cursor, hex_event_id: str, age_keyword_id: int, now: 
 
 
 def main() -> None:
+    ensure_local_database_schema()
+
     if not CSV_PATH.exists():
         log.error("CSV file not found: %s", CSV_PATH)
         sys.exit(1)
