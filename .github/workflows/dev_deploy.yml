@@ -39,12 +39,12 @@ jobs:
           ARBIT_DB_PROFILE: local
           DB_HOST: arbit-db
           DB_PORT: ${{ vars.DB_PORT || '3306' }}
-          DB_NAME: ${{ vars.DB_NAME || 'arbit_local' }}
-          DB_USER: ${{ vars.DB_USER || vars.GCP_DB_USERNAME || 'root' }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD || secrets.GCP_DB_PASSWORD }}
+          DB_NAME: ${{ vars.GCP_DB_USERNAME || 'arbit_local' }}
+          DB_USER: ${{ vars.DB_USER || 'root' }}
+          DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD || '' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GCS_BUCKET_NAME: ${{ vars.GCS_BUCKET_NAME || 'deepflow-image-storage' }}
-          GCS_PUBLIC_BASE_URL: ${{ vars.GCS_PUBLIC_BASE_URL || 'https://storage.googleapis.com/deepflow-image-storage' }}
+          GCS_BUCKET_NAME: ${{ vars.GCS_BUCKET_NAME || 'arbit-image-storage' }}
+          GCS_PUBLIC_BASE_URL: ${{ vars.GCS_PUBLIC_BASE_URL || 'https://storage.googleapis.com/arbit-image-storage' }}
         run: |
           mkdir -p deploy
           rsync -av --delete \
