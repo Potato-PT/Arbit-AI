@@ -1,10 +1,6 @@
 name: GCP AI Deploy
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    branches: ['main']
-    types: [completed]
   workflow_dispatch:
 
 concurrency:
@@ -18,7 +14,6 @@ jobs:
   prepare-deploy:
     name: Prepare Deploy Bundle
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
 
     env:
       REMOTE_APP_DIR: /home/lalalove0310/arbit-ai
@@ -26,6 +21,7 @@ jobs:
       DOCKER_IMAGE: arbit-ai:latest
       DOCKER_CONTAINER: arbit-ai
       DOCKER_NETWORK_ALIAS: arbit-ai
+      DB_CONTAINER: ${{ vars.DB_CONTAINER || '' }}
       APP_PORT: 8000
       HOST_PORT: 8000
 
@@ -35,10 +31,12 @@ jobs:
 
       - name: Prepare Deploy Bundle
         env:
-          ARBIT_DB_PROFILE: gcp
-          GCP_DB_URL: ${{ vars.GCP_DB_URL }}
-          GCP_DB_USERNAME: ${{ vars.GCP_DB_USERNAME }}
-          GCP_DB_PASSWORD: ${{ secrets.GCP_DB_PASSWORD }}
+          ARBIT_DB_PROFILE: local
+          DB_HOST: ${{ vars.DB_HOST || 'arbit-mysql' }}
+          DB_PORT: ${{ vars.DB_PORT || '3306' }}
+          DB_NAME: ${{ vars.DB_NAME || 'arbit_local' }}
+          DB_USER: ${{ vars.DB_USER || vars.GCP_DB_USERNAME || 'root' }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD || secrets.GCP_DB_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GCS_BUCKET_NAME: ${{ vars.GCS_BUCKET_NAME || 'deepflow-image-storage' }}
           GCS_PUBLIC_BASE_URL: ${{ vars.GCS_PUBLIC_BASE_URL || 'https://storage.googleapis.com/deepflow-image-storage' }}
@@ -56,9 +54,11 @@ jobs:
 
           {
             echo "ARBIT_DB_PROFILE=${ARBIT_DB_PROFILE}"
-            echo "GCP_DB_URL=${GCP_DB_URL}"
-            echo "GCP_DB_USERNAME=${GCP_DB_USERNAME}"
-            echo "GCP_DB_PASSWORD=${GCP_DB_PASSWORD}"
+            echo "DB_HOST=${DB_HOST}"
+            echo "DB_PORT=${DB_PORT}"
+            echo "DB_NAME=${DB_NAME}"
+            echo "DB_USER=${DB_USER}"
+            echo "DB_PASSWORD=${DB_PASSWORD}"
             echo "GEMINI_API_KEY=${GEMINI_API_KEY}"
             echo "GCS_BUCKET_NAME=${GCS_BUCKET_NAME}"
             echo "GCS_PUBLIC_BASE_URL=${GCS_PUBLIC_BASE_URL}"
@@ -137,6 +137,7 @@ jobs:
       DOCKER_IMAGE: arbit-ai:latest
       DOCKER_CONTAINER: arbit-ai
       DOCKER_NETWORK_ALIAS: arbit-ai
+      DB_CONTAINER: ${{ vars.DB_CONTAINER || '' }}
       APP_PORT: 8000
       HOST_PORT: 8000
 
@@ -203,6 +204,9 @@ jobs:
             test -f Dockerfile || { echo 'Dockerfile not found after rsync'; exit 1; }
 
             docker network inspect '${DOCKER_NETWORK}' >/dev/null 2>&1 || docker network create '${DOCKER_NETWORK}'
+            if [ -n '${DB_CONTAINER}' ]; then
+              docker network connect '${DOCKER_NETWORK}' '${DB_CONTAINER}' >/dev/null 2>&1 || true
+            fi
             docker build -t '${DOCKER_IMAGE}' .
 
             docker rm -f '${DOCKER_CONTAINER}' >/dev/null 2>&1 || true

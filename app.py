@@ -4,6 +4,7 @@ import importlib.util
 import logging
 import time
 import uuid
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent
 RECOMMENDATION_PATH = BASE_DIR / "db_recommendation.py"
+CULTURAL_EVENTS_PATH = BASE_DIR / "seoul_cultural_events.csv"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -142,6 +144,45 @@ def _row_to_event(row: pd.Series, include_scores: bool = False) -> dict[str, Any
     return event
 
 
+def _date_string(value: Any) -> str | None:
+    if pd.isna(value):
+        return None
+    parsed = pd.to_datetime(value, errors="coerce")
+    if pd.isna(parsed):
+        return str(value)
+    return parsed.date().isoformat()
+
+
+def _row_to_cultural_event(row: pd.Series) -> dict[str, Any]:
+    return {
+        "category": _clean_value(row.get("분류")),
+        "district": _clean_value(row.get("자치구")),
+        "title": _clean_value(row.get("공연/행사명")),
+        "date": _clean_value(row.get("날짜")),
+        "place": _clean_value(row.get("장소")),
+        "organization": _clean_value(row.get("기관명")),
+        "target": _clean_value(row.get("이용대상")),
+        "fee": _clean_value(row.get("이용요금")),
+        "start_date": _date_string(row.get("시작일")),
+        "end_date": _date_string(row.get("종료일")),
+        "theme": _clean_value(row.get("테마분류")),
+        "is_free_label": _clean_value(row.get("유무료")),
+        "detail_url": _clean_value(row.get("문화포털상세URL")),
+        "image_url": _clean_value(row.get("대표이미지")),
+        "event_time": _clean_value(row.get("행사시간")),
+    }
+
+
+def _query_values(values: list[str] | None) -> list[str]:
+    if not values:
+        return []
+
+    normalized: list[str] = []
+    for value in values:
+        normalized.extend(part.strip() for part in value.split(",") if part.strip())
+    return normalized
+
+
 @lru_cache(maxsize=1)
 def get_events_df() -> pd.DataFrame:
     try:
@@ -150,6 +191,19 @@ def get_events_df() -> pd.DataFrame:
         raise RuntimeError(
             "events_with_mood.csv 파일이 없습니다. 1_llm_mood_extractor.py를 먼저 실행하세요."
         ) from exc
+
+
+@lru_cache(maxsize=1)
+def get_cultural_events_df() -> pd.DataFrame:
+    try:
+        df = pd.read_csv(CULTURAL_EVENTS_PATH)
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"seoul_cultural_events.csv 파일이 없습니다: {CULTURAL_EVENTS_PATH}") from exc
+
+    df = df.copy()
+    df["_start_date"] = pd.to_datetime(df["시작일"], errors="coerce").dt.date
+    df["_end_date"] = pd.to_datetime(df["종료일"], errors="coerce").dt.date
+    return df.dropna(subset=["_start_date", "_end_date"]).reset_index(drop=True)
 
 
 @app.get(
@@ -175,6 +229,46 @@ def reload_data() -> dict[str, Any]:
     get_events_df.cache_clear()
     df = get_events_df()
     return {"status": "reloaded", "events_count": len(df)}
+
+
+@app.get(
+    "/api/events",
+    summary="Search cultural events",
+    description="Search seoul_cultural_events.csv by category, district, start date, and end date. Results are sorted by deadline.",
+)
+def search_cultural_events(
+    category: str | None = Query(None, description="Maps to seoul_cultural_events.csv column '분류'. Null means all categories."),
+    district: list[str] | None = Query(None, description="Maps to column '자치구'. Repeatable; null means all districts."),
+    startDate: date | None = Query(None, description="Maps to column '시작일'."),
+    endDate: date | None = Query(None, description="Maps to column '종료일'."),
+    sort: str = Query("deadline", pattern="^deadline$", description="Fixed sort by event deadline/end date."),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+) -> dict[str, Any]:
+    df = get_cultural_events_df()
+
+    if category:
+        df = df[df["분류"] == category]
+
+    districts = _query_values(district)
+    if districts:
+        df = df[df["자치구"].isin(districts)]
+
+    if startDate:
+        df = df[df["_start_date"] >= startDate]
+    if endDate:
+        df = df[df["_end_date"] <= endDate]
+
+    df = df.sort_values(["_end_date", "_start_date", "공연/행사명"], ascending=[True, True, True])
+    total = len(df)
+    page = df.iloc[offset : offset + limit]
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "sort": sort,
+        "events": [_row_to_cultural_event(row) for _, row in page.iterrows()],
+    }
 
 
 @app.get(
@@ -246,6 +340,12 @@ def recommend(payload: RecommendationRequest, request: Request) -> dict[str, Any
         request_id,
         len(df),
     )
+    if df.empty:
+        logger.error(
+            "recommendations.data_unavailable request_id=%s reason=no_active_events",
+            request_id,
+        )
+        raise HTTPException(status_code=503, detail="추천 가능한 행사 데이터가 없습니다.")
 
     event_ids = [str(event_id) for event_id in dict.fromkeys(payload.event_ids)]
 

@@ -16,6 +16,25 @@ TODAY = date.today()
 
 WEIGHTS_FOCUSED = {"genre": 0.40, "mood": 0.45, "urgency": 0.15}
 WEIGHTS_DISPERSED = {"genre": 0.30, "mood": 0.55, "urgency": 0.15}
+EVENT_COLUMNS = [
+    "event_id",
+    "title",
+    "genre",
+    "district",
+    "is_free",
+    "start_date",
+    "end_date",
+    "description",
+    "age_label",
+    "mood_tags",
+    "mood_source",
+    "status",
+    "days_left",
+]
+
+
+def _empty_events_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=EVENT_COLUMNS)
 
 
 def _to_bool(value) -> bool:
@@ -114,9 +133,9 @@ def load_data() -> pd.DataFrame:
         if not event["age_label"]:
             event["age_label"] = "all"
 
-    df = pd.DataFrame(events.values())
+    df = pd.DataFrame(events.values(), columns=EVENT_COLUMNS)
     if df.empty:
-        return df
+        return _empty_events_frame()
     return df[df["status"] != "CLOSED"].reset_index(drop=True)
 
 
@@ -190,9 +209,9 @@ def _rows_to_frame(rows: list[dict]) -> pd.DataFrame:
         if not event["age_label"]:
             event["age_label"] = "all"
 
-    df = pd.DataFrame(events.values())
+    df = pd.DataFrame(events.values(), columns=EVENT_COLUMNS)
     if df.empty:
-        return df
+        return _empty_events_frame()
     return df[df["status"] != "CLOSED"].reset_index(drop=True)
 
 
