@@ -209,14 +209,11 @@ def get_cultural_events_df() -> pd.DataFrame:
 @app.get(
     "/health",
     summary="서버 상태 확인",
-    description="추천 API 서버가 정상 작동 중인지와 현재 로드된 행사 데이터 개수를 확인합니다.",
+    description="추천 API 서버가 정상 작동 중인지 확인합니다.",
 )
 def health() -> dict[str, Any]:
-    df = get_events_df()
     return {
         "status": "ok",
-        "events_count": len(df),
-        "data_source": recommendation.DATA_SOURCE,
     }
 
 
