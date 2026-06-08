@@ -27,7 +27,7 @@ def _parse_jdbc_mysql_url(jdbc_url: str) -> tuple[str, int, str]:
 
 @lru_cache(maxsize=1)
 def get_db_config() -> dict:
-    db_profile = os.getenv("ARBIT_DB_PROFILE", "local").lower()
+    db_profile = os.getenv("ARBIT_DB_PROFILE", "gcp").lower()
     jdbc_url = os.getenv("GCP_DB_URL") if db_profile == "gcp" else None
     if db_profile == "gcp":
         if not jdbc_url:
@@ -56,7 +56,7 @@ def get_db_config() -> dict:
 
 
 def is_local_db_profile() -> bool:
-    return os.getenv("ARBIT_DB_PROFILE", "local").lower() == "local"
+    return os.getenv("ARBIT_DB_PROFILE", "gcp").lower() == "local"
 
 
 @lru_cache(maxsize=1)
