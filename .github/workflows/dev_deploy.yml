@@ -37,7 +37,7 @@ jobs:
       - name: Prepare Deploy Bundle
         env:
           ARBIT_DB_PROFILE: local
-          DB_HOST: ${{ vars.DB_HOST || 'arbit-mysql' }}
+          DB_HOST: arbit-mysql
           DB_PORT: ${{ vars.DB_PORT || '3306' }}
           DB_NAME: ${{ vars.DB_NAME || 'arbit_local' }}
           DB_USER: ${{ vars.DB_USER || vars.GCP_DB_USERNAME || 'root' }}
