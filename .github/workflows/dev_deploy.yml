@@ -39,13 +39,15 @@ jobs:
           ARBIT_DB_PROFILE: local
           DB_HOST: arbit-db
           DB_PORT: ${{ vars.DB_PORT || '3306' }}
-          DB_NAME: ${{ vars.GCP_DB_USERNAME || 'arbit_local' }}
-          DB_USER: ${{ vars.DB_USER || 'root' }}
-          DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD || '' }}
+          MYSQL_DATABASE: ${{ vars.MYSQL_DATABASE || 'arbit' }}
+          MYSQL_USER: ${{ vars.MYSQL_USER || 'arbit' }}
+          APP_DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GCS_BUCKET_NAME: ${{ vars.GCS_BUCKET_NAME || 'arbit-image-storage' }}
-          GCS_PUBLIC_BASE_URL: ${{ vars.GCS_PUBLIC_BASE_URL || 'https://storage.googleapis.com/arbit-image-storage' }}
+          GCS_BUCKET_NAME: arbit-image-storage
+          GCS_PUBLIC_BASE_URL: https://storage.googleapis.com/arbit-image-storage/profile_image
         run: |
+          test -n "${APP_DB_PASSWORD}" || { echo 'APP_DB_PASSWORD secret is required'; exit 1; }
+
           mkdir -p deploy
           rsync -av --delete \
             --exclude '.git' \
@@ -61,9 +63,9 @@ jobs:
             echo "ARBIT_DB_PROFILE=${ARBIT_DB_PROFILE}"
             echo "DB_HOST=${DB_HOST}"
             echo "DB_PORT=${DB_PORT}"
-            echo "DB_NAME=${DB_NAME}"
-            echo "DB_USER=${DB_USER}"
-            echo "DB_PASSWORD=${DB_PASSWORD}"
+            echo "DB_NAME=${MYSQL_DATABASE}"
+            echo "DB_USER=${MYSQL_USER}"
+            echo "DB_PASSWORD=${APP_DB_PASSWORD}"
             echo "GEMINI_API_KEY=${GEMINI_API_KEY}"
             echo "GCS_BUCKET_NAME=${GCS_BUCKET_NAME}"
             echo "GCS_PUBLIC_BASE_URL=${GCS_PUBLIC_BASE_URL}"
