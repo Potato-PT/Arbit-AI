@@ -102,7 +102,7 @@ class RecommendationRequest(BaseModel):
             "550e8400-e29b-41d4-a716-446655440003",
         ]],
     )
-    limit: int = Field(10, ge=1, le=50, description="추천 결과로 반환할 최대 행사 개수입니다.")
+    limit: int = Field(20, ge=1, le=20, description="추천 결과로 반환할 최대 행사 개수입니다.")
 
 
 def _clean_value(value: Any) -> Any:
