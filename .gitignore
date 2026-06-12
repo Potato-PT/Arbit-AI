@@ -1,15 +1,12 @@
-.gradle/
-build/
-out/
-*.class
-
+# 환경 변수 (보안)
 .env
-*.log
 
-.idea/
-*.iml
-.vscode/
+# 데이터 및 모델 (용량)
+data/
+models/
 
-src/main/resources/application-local.yml
-src/test/*
-node_modules/*
+# 파이썬 환경 및 캐시
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
