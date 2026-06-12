@@ -55,7 +55,7 @@ def column_exists(cursor, database: str) -> bool:
         """
         SELECT COUNT(*) AS cnt
         FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = %s AND TABLE_NAME = 'events' AND COLUMN_NAME = '신뢰도'
+        WHERE TABLE_SCHEMA = %s AND TABLE_NAME = 'events' AND COLUMN_NAME = 'reliability'
         """,
         (database,),
     )
@@ -80,12 +80,12 @@ def main() -> None:
     try:
         with conn.cursor() as cursor:
             if column_exists(cursor, config["db"]):
-                print("컬럼 `신뢰도` 이미 존재 — DDL 스킵")
+                print("컬럼 reliability 이미 존재 — DDL 스킵")
             else:
                 cursor.execute(
-                    "ALTER TABLE events ADD COLUMN `신뢰도` ENUM('BEST','HIGH','MID','LOW') NULL"
+                    "ALTER TABLE events ADD COLUMN reliability ENUM('BEST','HIGH','MID','LOW') NULL"
                 )
-                print("컬럼 `신뢰도` 추가 완료")
+                print("컬럼 reliability 추가 완료")
             conn.commit()
 
         with conn.cursor() as cursor:
@@ -113,7 +113,7 @@ def main() -> None:
                     continue
 
                 cursor.execute(
-                    "UPDATE events SET `신뢰도` = %s WHERE id = %s",
+                    "UPDATE events SET reliability = %s WHERE id = %s",
                     (reliability, event_id),
                 )
                 stats["updated"] += 1
