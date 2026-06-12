@@ -59,6 +59,7 @@ LOCAL_SCHEMA_STATEMENTS = [
         end_date DATE NOT NULL,
         free BIT(1) NOT NULL,
         status VARCHAR(20) NOT NULL,
+        신뢰도 ENUM('BEST','HIGH','MID','LOW') NULL,
         average_rating DECIMAL(3,2) NOT NULL DEFAULT 0.00,
         price VARCHAR(255) NULL,
         booking_url VARCHAR(1000) NULL,
