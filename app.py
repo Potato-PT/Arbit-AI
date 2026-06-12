@@ -92,9 +92,9 @@ async def log_recommendations_http(request: Request, call_next):
 class RecommendationRequest(BaseModel):
     event_ids: list[uuid.UUID] = Field(
         ...,
-        min_length=4,
-        max_length=5,
-        description="취향 프로필을 만들기 위해 사용자가 관심 행사로 선택한 event_id 4~5개입니다.",
+        min_length=5,
+        max_length=20,
+        description="취향 프로필을 만들기 위해 사용자가 관심 행사로 선택한 event_id 5~20개입니다.",
         examples=[[
             "550e8400-e29b-41d4-a716-446655440000",
             "550e8400-e29b-41d4-a716-446655440001",
@@ -312,7 +312,7 @@ def seed_events(
     sample = df.sample(n=min(sample_size, len(df)), random_state=random_state).reset_index(drop=True)
     return {
         "sample_size": len(sample),
-        "message": "이 목록에서 관심 있는 event_id 4~5개를 POST /recommendations로 보내세요.",
+        "message": "이 목록에서 관심 있는 event_id 5~20개를 POST /recommendations로 보내세요.",
         "events": [_row_to_event(row) for _, row in sample.iterrows()],
     }
 
@@ -320,7 +320,7 @@ def seed_events(
 @app.post(
     "/recommendations",
     summary="맞춤 행사 추천",
-    description="사용자가 선택한 관심 행사 4~5개를 기반으로 취향 프로필을 만들고 추천 행사를 반환합니다.",
+    description="사용자가 선택한 관심 행사 5~20개를 기반으로 취향 프로필을 만들고 추천 행사를 반환합니다.",
 )
 def recommend(payload: RecommendationRequest, request: Request) -> dict[str, Any]:
     request_id = getattr(request.state, "request_id", "-")
