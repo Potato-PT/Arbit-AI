@@ -124,7 +124,7 @@ def insert_event(cursor, row: pd.Series, category_id: int, now: datetime) -> Non
     district = clean(row.get("자치구"), 50) or "미정"
     poster_image_url = clean(row.get("대표이미지"), 1000)
     price = clean(row.get("이용요금"), 255)
-    booking_url = clean(row.get("문화포털상세URL"), 1000) or clean(row.get("홈페이지주소"), 1000)
+    booking_url = clean(row.get("홈페이지주소"), 1000)
 
     params = {
         "category_id": category_id,
